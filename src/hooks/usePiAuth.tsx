@@ -15,6 +15,80 @@ interface PiAuthContextValue {
   signOut: () => Promise<void>;
 }
 
+interface VerifyResponse {
+  access_token?: string;
+  refresh_token?: string;
+  user?: User;
+}
+
+interface AuthErrorDetails {
+  status: number;
+  statusText: string;
+  body: unknown;
+}
+
+class PiSessionExchangeError extends Error {
+  readonly details: AuthErrorDetails;
+
+  constructor(message: string, details: AuthErrorDetails) {
+    super(message);
+    this.name = "PiSessionExchangeError";
+    this.details = details;
+  }
+}
+
+/**
+ * Exchanges the one-time hash without auth-js adding gotrue_meta_security.
+ * The auth endpoint used by this project strictly accepts token_hash + type only.
+ */
+const exchangePiTokenHash = async (tokenHash: string): Promise<Session> => {
+  const authUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
+  if (!authUrl || !publishableKey) throw new Error("Backend authentication configuration is missing");
+
+  const verifyPayload = { token_hash: tokenHash, type: "magiclink" as const };
+  console.info("Pi token_hash received", {
+    present: tokenHash.length > 0,
+    length: tokenHash.length,
+    format: /^[A-Za-z0-9_-]+$/.test(tokenHash) ? "url-safe" : "unexpected",
+    masked: tokenHash.length > 12
+      ? `${tokenHash.slice(0, 6)}…${tokenHash.slice(-6)}`
+      : "[redacted]",
+    verifyPayloadKeys: Object.keys(verifyPayload),
+    type: verifyPayload.type,
+  });
+
+  const response = await fetch(`${authUrl}/auth/v1/verify`, {
+    method: "POST",
+    headers: {
+      apikey: publishableKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(verifyPayload),
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const details = { status: response.status, statusText: response.statusText, body };
+    console.error("Pi session exchange raw backend error", details);
+    const backendMessage =
+      typeof body === "object" && body !== null && "msg" in body && typeof body.msg === "string"
+        ? body.msg
+        : `Session exchange failed (${response.status})`;
+    throw new PiSessionExchangeError(backendMessage, details);
+  }
+
+  const verified = body as VerifyResponse;
+  if (!verified.access_token || !verified.refresh_token) {
+    throw new Error("Backend verification did not return a complete session");
+  }
+  const { data, error: sessionError } = await supabase.auth.setSession({
+    access_token: verified.access_token,
+    refresh_token: verified.refresh_token,
+  });
+  if (sessionError || !data.session) throw sessionError ?? new Error("Could not persist the Pi session");
+  return data.session;
+};
+
 const PiAuthContext = createContext<PiAuthContextValue | undefined>(undefined);
 
 export const PiAuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -54,15 +128,11 @@ export const PiAuthProvider = ({ children }: { children: React.ReactNode }) => {
         body: { accessToken: auth.accessToken },
       });
       if (fnError) throw new Error(fnError.message);
-      if (!data?.token_hash) throw new Error("Backend did not return a session");
-
-      // Supabase n'accepte QUE token_hash + type pour ce flux (pas d'email, pas d'options).
-      const verifyPayload = { token_hash: data.token_hash as string, type: "magiclink" as const };
-      const { error: otpError } = await supabase.auth.verifyOtp(verifyPayload);
-      if (otpError) {
-        console.error("verifyOtp payload:", { ...verifyPayload, token_hash: "[redacted]" });
-        throw otpError;
+      if (typeof data?.token_hash !== "string" || data.token_hash.length === 0) {
+        throw new Error("Backend did not return a valid session token_hash");
       }
+
+      await exchangePiTokenHash(data.token_hash);
 
       setPiUsername(data.pi_username ?? auth.user?.username ?? null);
       if (!silent) {
@@ -82,7 +152,7 @@ export const PiAuthProvider = ({ children }: { children: React.ReactNode }) => {
           ? "Open this app in the Pi Browser to sign in with Pi."
           : raw;
       setError(message);
-      console.error("Pi authentication failed:", raw);
+      console.error("Pi authentication failed (raw):", e);
       if (!silent) {
         toast({
           title: cancelled ? "Sign-in cancelled" : "Pi sign-in failed",
