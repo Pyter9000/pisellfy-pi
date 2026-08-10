@@ -37,9 +37,15 @@ Deno.serve(async (req) => {
     const piUsername: string = piUser?.username ?? "pioneer";
     if (!piUid) return json({ error: "Pi user has no uid" }, 401);
 
+    const backendUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!backendUrl || !serviceRoleKey) {
+      console.error("pi-auth backend configuration is missing");
+      return json({ error: "Backend authentication configuration is missing" }, 500);
+    }
     const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      backendUrl,
+      serviceRoleKey,
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
 
@@ -84,9 +90,17 @@ Deno.serve(async (req) => {
       return json({ error: "Could not establish session" }, 500);
     }
 
+    const tokenHash = link.properties.hashed_token;
+    console.info("Generated Pi session link", {
+      type: "magiclink",
+      tokenHashPresent: tokenHash.length > 0,
+      tokenHashLength: tokenHash.length,
+      tokenHashFormat: /^[A-Za-z0-9_-]+$/.test(tokenHash) ? "url-safe" : "unexpected",
+    });
+
     return json({
-      email,
-      token_hash: link.properties.hashed_token,
+      token_hash: tokenHash,
+      token_type: "magiclink",
       pi_uid: piUid,
       pi_username: piUsername,
     });
