@@ -54,14 +54,15 @@ export const PiAuthProvider = ({ children }: { children: React.ReactNode }) => {
         body: { accessToken: auth.accessToken },
       });
       if (fnError) throw new Error(fnError.message);
-      if (!data?.token_hash || !data?.email) throw new Error("Backend did not return a session");
+      if (!data?.token_hash) throw new Error("Backend did not return a session");
 
-      const { error: otpError } = await supabase.auth.verifyOtp({
-        email: data.email,
-        token_hash: data.token_hash,
-        type: "email",
-      });
-      if (otpError) throw otpError;
+      // Supabase n'accepte QUE token_hash + type pour ce flux (pas d'email, pas d'options).
+      const verifyPayload = { token_hash: data.token_hash as string, type: "magiclink" as const };
+      const { error: otpError } = await supabase.auth.verifyOtp(verifyPayload);
+      if (otpError) {
+        console.error("verifyOtp payload:", { ...verifyPayload, token_hash: "[redacted]" });
+        throw otpError;
+      }
 
       setPiUsername(data.pi_username ?? auth.user?.username ?? null);
       if (!silent) {
