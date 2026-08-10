@@ -91,11 +91,19 @@ export function initPi(): Promise<PiSDK> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
+    if (!PI_OAUTH_CLIENT_ID) {
+      throw new Error(
+        "Pi OAuth Client ID is missing. Set VITE_PI_OAUTH_CLIENT_ID in your environment.",
+      );
+    }
+
     const Pi = await loadPiSdk();
     const sandbox =
       typeof window !== "undefined" &&
       (window.location.hostname === "localhost" || window.location.hostname.endsWith(".lovable.app"));
     // Pi.init may return a Promise - await it fully before authenticating or paying.
+    // The SDK registers the app via the Client ID bound to the current origin in the
+    // Pi Developer Portal; VITE_PI_OAUTH_CLIENT_ID is the canonical reference here.
     await Promise.resolve(Pi.init({ version: "2.0", sandbox }));
     return Pi;
   })();
