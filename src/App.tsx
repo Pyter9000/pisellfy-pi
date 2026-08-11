@@ -30,6 +30,9 @@ const App = () => (
             <Route path="/subscriptions/create" element={<CreateSubscription />} />
             <Route path="/subscriptions/mine" element={<MySubscriptions />} />
             <Route path="/subscriptions/dashboard" element={<SellerSubscriptions />} />
+            <Route path="/earnings" element={<Earnings />} />
+            <Route path="/admin/revenue" element={<PlatformRevenue />} />
+
             <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
