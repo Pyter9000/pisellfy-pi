@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
-import { initPi, type PiPaymentDTO } from "@/lib/pi";
+import { ensurePaymentsScope, initPi, type PiPaymentDTO } from "@/lib/pi";
+
 
 export interface DigitalProduct {
   id: string | number;
