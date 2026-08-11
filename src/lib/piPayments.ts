@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
-import { initPi, type PiPaymentDTO } from "@/lib/pi";
+import { ensurePaymentsScope, initPi, type PiPaymentDTO } from "@/lib/pi";
+
 
 export interface DigitalProduct {
   id: string | number;
@@ -47,6 +48,9 @@ export async function purchaseDigitalProduct(
   handlers: PurchaseHandlers = {},
 ) {
   const Pi = await initPi();
+  // Guarantee the pioneer granted the "payments" scope before creating a payment.
+  await ensurePaymentsScope();
+
 
   const paymentData = {
     amount: product.amount,

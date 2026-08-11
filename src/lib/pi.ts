@@ -5,8 +5,11 @@ import { PI_OAUTH_CLIENT_ID, PI_SCOPES } from "@/lib/piConfig";
 
 export interface PiAuthResult {
   accessToken: string;
-  user: { uid: string; username: string };
+  user: { uid: string; username: string; credentials?: { scopes?: string[] } };
+  /** Some SDK versions expose the granted scopes at the root. */
+  scopes?: string[];
 }
+
 
 export interface PiPaymentDTO {
   identifier: string;
@@ -117,10 +120,51 @@ export async function handleIncompletePayment(payment: PiPaymentDTO) {
   await completeIncompletePayment(payment);
 }
 
+/** Scopes granted by the last successful Pi.authenticate() call. */
+let grantedScopes: string[] = [];
+
+export const getGrantedScopes = () => [...grantedScopes];
+export const hasPaymentsScope = () => grantedScopes.includes("payments");
+
+const readScopes = (auth: PiAuthResult): string[] => {
+  const fromRoot = Array.isArray(auth?.scopes) ? auth.scopes : undefined;
+  const fromUser = Array.isArray(auth?.user?.credentials?.scopes)
+    ? auth.user.credentials.scopes
+    : undefined;
+  // If the SDK does not report scopes, assume the ones we requested were granted.
+  return fromRoot ?? fromUser ?? [...PI_SCOPES];
+};
+
 export async function authenticateWithPi(): Promise<PiAuthResult> {
   const Pi = await initPi();
   // "username" is the minimum; "payments" is required for U2A payments via Pi.createPayment.
-  return await Pi.authenticate([...PI_SCOPES], (payment) => {
+  const requested = [...PI_SCOPES];
+  const auth = await Pi.authenticate(requested, (payment) => {
     void handleIncompletePayment(payment);
   });
+  grantedScopes = readScopes(auth);
+  console.info("Pi.authenticate granted scopes", {
+    requested,
+    granted: grantedScopes,
+    hasPayments: grantedScopes.includes("payments"),
+    reportedBySdk: Boolean(auth?.scopes ?? auth?.user?.credentials?.scopes),
+  });
+  return auth;
 }
+
+/**
+ * Guarantees the current Pi session carries the "payments" scope.
+ * A pioneer who signed in before the payments scope existed keeps a Supabase
+ * session but no payments grant, so we re-authenticate with both scopes.
+ */
+export async function ensurePaymentsScope(): Promise<PiAuthResult | null> {
+  if (hasPaymentsScope()) return null;
+  const auth = await authenticateWithPi();
+  if (!grantedScopes.includes("payments")) {
+    throw new Error(
+      "The 'payments' permission was not granted. Approve it in the Pi Browser prompt to buy this product.",
+    );
+  }
+  return auth;
+}
+
