@@ -13,10 +13,12 @@ const Navbar = () => {
   const navLinks = [
     { name: "Marketplace", href: "/#marketplace" },
     { name: "Abonnements", href: "/subscriptions" },
+    ...(session ? [{ name: "Mes revenus", href: "/earnings" }] : []),
     { name: "Categories", href: "/#categories" },
     { name: "Creators", href: "/#creators" },
     { name: "About", href: "/#about" },
   ];
+
 
   return (
     <motion.nav
