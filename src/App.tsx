@@ -10,7 +10,10 @@ import CreateSubscription from "./pages/CreateSubscription";
 import MySubscriptions from "./pages/MySubscriptions";
 import SellerSubscriptions from "./pages/SellerSubscriptions";
 import OAuthConsent from "./pages/OAuthConsent";
+import Earnings from "./pages/Earnings";
+import PlatformRevenue from "./pages/PlatformRevenue";
 import NotFound from "./pages/NotFound";
+
 
 const queryClient = new QueryClient();
 
