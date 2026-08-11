@@ -14,6 +14,151 @@ export type Database = {
   }
   public: {
     Tables: {
+      earnings: {
+        Row: {
+          buyer_id: string
+          commission_rate: number
+          created_at: string
+          id: string
+          payment_id: string | null
+          payout_id: string | null
+          payout_status: Database["public"]["Enums"]["payout_status"]
+          platform_fee: number
+          reference_id: string
+          seller_earnings: number
+          seller_id: string | null
+          total_amount: number
+          transaction_type: Database["public"]["Enums"]["transaction_type"]
+          updated_at: string
+        }
+        Insert: {
+          buyer_id: string
+          commission_rate?: number
+          created_at?: string
+          id?: string
+          payment_id?: string | null
+          payout_id?: string | null
+          payout_status?: Database["public"]["Enums"]["payout_status"]
+          platform_fee: number
+          reference_id: string
+          seller_earnings: number
+          seller_id?: string | null
+          total_amount: number
+          transaction_type: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+        }
+        Update: {
+          buyer_id?: string
+          commission_rate?: number
+          created_at?: string
+          id?: string
+          payment_id?: string | null
+          payout_id?: string | null
+          payout_status?: Database["public"]["Enums"]["payout_status"]
+          platform_fee?: number
+          reference_id?: string
+          seller_earnings?: number
+          seller_id?: string | null
+          total_amount?: number
+          transaction_type?: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "earnings_payout_id_fkey"
+            columns: ["payout_id"]
+            isOneToOne: false
+            referencedRelation: "payouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payout_audit_log: {
+        Row: {
+          action: string
+          amount: number | null
+          created_at: string
+          details: Json
+          id: string
+          payout_id: string | null
+          seller_id: string | null
+          success: boolean
+        }
+        Insert: {
+          action: string
+          amount?: number | null
+          created_at?: string
+          details?: Json
+          id?: string
+          payout_id?: string | null
+          seller_id?: string | null
+          success: boolean
+        }
+        Update: {
+          action?: string
+          amount?: number | null
+          created_at?: string
+          details?: Json
+          id?: string
+          payout_id?: string | null
+          seller_id?: string | null
+          success?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payout_audit_log_payout_id_fkey"
+            columns: ["payout_id"]
+            isOneToOne: false
+            referencedRelation: "payouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payouts: {
+        Row: {
+          amount: number
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          memo: string
+          pi_payment_id: string | null
+          requested_at: string
+          seller_id: string
+          status: Database["public"]["Enums"]["payout_state"]
+          txid: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          memo?: string
+          pi_payment_id?: string | null
+          requested_at?: string
+          seller_id: string
+          status?: Database["public"]["Enums"]["payout_state"]
+          txid?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          memo?: string
+          pi_payment_id?: string | null
+          requested_at?: string
+          seller_id?: string
+          status?: Database["public"]["Enums"]["payout_state"]
+          txid?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -48,6 +193,7 @@ export type Database = {
           payment_id: string
           product_id: string
           product_title: string
+          seller_id: string | null
           status: string
           txid: string | null
           updated_at: string
@@ -62,6 +208,7 @@ export type Database = {
           payment_id: string
           product_id: string
           product_title: string
+          seller_id?: string | null
           status?: string
           txid?: string | null
           updated_at?: string
@@ -76,10 +223,44 @@ export type Database = {
           payment_id?: string
           product_id?: string
           product_title?: string
+          seller_id?: string | null
           status?: string
           txid?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      seller_balances: {
+        Row: {
+          available_balance: number
+          created_at: string
+          minimum_payout: number
+          pending_balance: number
+          seller_id: string
+          total_earned: number
+          total_withdrawn: number
+          updated_at: string
+        }
+        Insert: {
+          available_balance?: number
+          created_at?: string
+          minimum_payout?: number
+          pending_balance?: number
+          seller_id: string
+          total_earned?: number
+          total_withdrawn?: number
+          updated_at?: string
+        }
+        Update: {
+          available_balance?: number
+          created_at?: string
+          minimum_payout?: number
+          pending_balance?: number
+          seller_id?: string
+          total_earned?: number
+          total_withdrawn?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -231,21 +412,57 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
+      app_role: "admin" | "moderator" | "user"
       billing_interval: "weekly" | "monthly" | "yearly"
+      payout_state:
+        | "pending"
+        | "approved"
+        | "completed"
+        | "failed"
+        | "cancelled"
+      payout_status: "unpaid" | "processing" | "paid"
       subscription_status:
         | "active"
         | "past_due"
         | "canceled"
         | "expired"
         | "pending"
+      transaction_type: "product" | "service" | "course" | "subscription"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -373,7 +590,10 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["admin", "moderator", "user"],
       billing_interval: ["weekly", "monthly", "yearly"],
+      payout_state: ["pending", "approved", "completed", "failed", "cancelled"],
+      payout_status: ["unpaid", "processing", "paid"],
       subscription_status: [
         "active",
         "past_due",
@@ -381,6 +601,7 @@ export const Constants = {
         "expired",
         "pending",
       ],
+      transaction_type: ["product", "service", "course", "subscription"],
     },
   },
 } as const

@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { recordEarning, resolveTransactionType } from "../_shared/revenue.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -126,11 +128,32 @@ Deno.serve(async (req) => {
       return json({ error: "Could not complete payment" }, 502);
     }
 
+    const productId = String(meta?.product_id ?? "unknown");
+
+    // Resolve the seller who earns 80% of this payment.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let sellerId: string | null =
+      typeof meta?.seller_id === "string" && UUID_RE.test(meta.seller_id) ? meta.seller_id : null;
+    let txType = resolveTransactionType(meta?.transaction_type ?? meta?.type);
+    if (productId.startsWith("sub_")) {
+      txType = "subscription";
+      const planId = productId.slice(4);
+      if (UUID_RE.test(planId)) {
+        const { data: plan } = await admin
+          .from("subscription_plans")
+          .select("seller_id")
+          .eq("id", planId)
+          .maybeSingle();
+        if (plan?.seller_id) sellerId = plan.seller_id;
+      }
+    }
+
     const { error: updateErr } = await admin.from("purchases").upsert(
       {
         user_id: userId,
+        seller_id: sellerId,
         payment_id: paymentId,
-        product_id: String(meta?.product_id ?? "unknown"),
+        product_id: productId,
         product_title: String(meta?.product_title ?? "Digital product"),
         amount: Number(payment?.amount ?? 0),
         memo: String(payment?.memo ?? ""),
@@ -142,7 +165,29 @@ Deno.serve(async (req) => {
     );
     if (updateErr) console.error("purchase completion update failed", updateErr);
 
-    return json({ ok: true, status: "completed", txid });
+    // 20% platform / 80% seller — computed server-side from the Pi amount.
+    let split: { platformFee: number; sellerEarnings: number } | null = null;
+    try {
+      split = await recordEarning(admin, {
+        sellerId,
+        buyerId: userId,
+        transactionType: txType,
+        referenceId: productId,
+        paymentId,
+        totalAmount: Number(payment?.amount ?? 0),
+      });
+    } catch (e) {
+      console.error("revenue split failed", e);
+    }
+
+    return json({
+      ok: true,
+      status: "completed",
+      txid,
+      platform_fee: split?.platformFee ?? null,
+      seller_earnings: split?.sellerEarnings ?? null,
+    });
+
   } catch (e) {
     console.error("pi-payment error", e);
     return json({ error: "Unexpected error" }, 500);
