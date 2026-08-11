@@ -5,8 +5,11 @@ import { PI_OAUTH_CLIENT_ID, PI_SCOPES } from "@/lib/piConfig";
 
 export interface PiAuthResult {
   accessToken: string;
-  user: { uid: string; username: string };
+  user: { uid: string; username: string; credentials?: { scopes?: string[] } };
+  /** Some SDK versions expose the granted scopes at the root. */
+  scopes?: string[];
 }
+
 
 export interface PiPaymentDTO {
   identifier: string;
