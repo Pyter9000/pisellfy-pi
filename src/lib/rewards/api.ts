@@ -112,3 +112,10 @@ export const adminRecalculate = (seller_id: string) => callRewards("admin-recalc
 
 export const fmtNumber = (n: number, unit?: string) =>
   `${Math.round(Number(n) * 10) / 10}${unit ?? ""}`;
+
+export const adminSetTop = (seller_id: string, mode: "granted" | "rejected" | "auto", reason = "") =>
+  callRewards("admin-grant-top", { seller_id, mode, reason });
+export const adminRevokeBadge = (user_id: string, code: string) => callRewards("admin-revoke-badge", { user_id, code });
+export const adminFlagAction = (flag_id: string, decision: "warn" | "suspend" | "dismiss", reason: string) =>
+  callRewards("admin-flag-action", { flag_id, decision, reason });
+export const adminUnsuspend = (seller_id: string, reason: string) => callRewards("admin-unsuspend", { seller_id, reason });
