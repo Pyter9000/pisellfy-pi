@@ -87,6 +87,15 @@ Deno.serve(async (req) => {
       ) {
         return json({ error: "Payment does not match the requested product" }, 400);
       }
+      // Suspended sellers cannot receive new orders.
+      if (typeof meta?.seller_id === "string" && meta.seller_id) {
+        const { data: mod } = await admin
+          .from("seller_moderation")
+          .select("suspended")
+          .eq("seller_id", meta.seller_id)
+          .maybeSingle();
+        if (mod?.suspended) return json({ error: "Ce vendeur est suspendu et ne peut pas recevoir de commandes." }, 403);
+      }
 
       const { error: insertErr } = await admin.from("purchases").upsert(
         {

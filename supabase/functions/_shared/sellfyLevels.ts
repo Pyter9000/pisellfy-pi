@@ -278,7 +278,11 @@ export async function calculateSellerLevel(admin: SupabaseClient, sellerId: stri
     .maybeSingle();
 
   const previous = (existing?.level ?? "level_0") as SellfyLevel;
-  const manuallyGranted = existing?.level === "level_3" && rank(earned) < 3;
+  // Admin decision on Top always wins over the automatic calculation.
+  const topOverride = (existing?.top_override ?? null) as "granted" | "rejected" | null;
+  const manuallyGranted = topOverride === "granted";
+  if (topOverride === "rejected") manualReview = false;
+  if (manuallyGranted) earned = "level_3";
 
   let level = previous;
   let underWatch = false;
