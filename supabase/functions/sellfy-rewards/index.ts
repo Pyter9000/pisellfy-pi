@@ -188,26 +188,111 @@ Deno.serve(async (req) => {
       // ===== ADMIN =====
       case "admin-overview": {
         if (!isAdmin) return json({ error: "Forbidden" }, 403);
-        const [requirements, levels, flags, badges, missions, boosts, clubs, audit] = await Promise.all([
+        const [requirements, levels, flags, badges, userBadges, rewards, profiles, moderation, pointsTx, xpTx, audit] = await Promise.all([
           admin.from("seller_level_requirements").select("*").order("level"),
-          admin.from("seller_levels").select("*, seller_performance:seller_performance(success_score)").order("calculated_at", { ascending: false }).limit(100),
-          admin.from("reward_fraud_flags").select("*").order("created_at", { ascending: false }).limit(50),
+          admin.from("seller_levels").select("*").order("calculated_at", { ascending: false }).limit(500),
+          admin.from("reward_fraud_flags").select("*").order("created_at", { ascending: false }).limit(200),
           admin.from("badges").select("*").order("code"),
-          admin.from("missions").select("*").order("period"),
-          admin.from("seller_boosts").select("*").order("created_at", { ascending: false }).limit(50),
-          admin.from("sellfy_club_memberships").select("*").eq("is_active", true),
-          admin.from("reward_audit_logs").select("*").order("created_at", { ascending: false }).limit(50),
+          admin.from("user_badges").select("user_id, awarded_at, badges(code,name)"),
+          admin.from("user_rewards").select("user_id, points_balance, xp_total"),
+          admin.from("profiles").select("id, pi_username"),
+          admin.from("seller_moderation").select("*"),
+          admin.from("points_transactions").select("*").eq("source_type", "admin").order("created_at", { ascending: false }).limit(100),
+          admin.from("xp_transactions").select("*").eq("source_type", "admin").order("created_at", { ascending: false }).limit(100),
+          admin.from("reward_audit_logs").select("*").order("created_at", { ascending: false }).limit(200),
         ]);
+        const { data: perf } = await admin.from("seller_performance").select("seller_id, success_score");
+        const nameOf = new Map((profiles.data ?? []).map((p) => [p.id, p.pi_username]));
+        const rewardOf = new Map((rewards.data ?? []).map((r) => [r.user_id, r]));
+        const modOf = new Map((moderation.data ?? []).map((m) => [m.seller_id, m]));
+        const perfOf = new Map((perf ?? []).map((p) => [p.seller_id, p.success_score]));
+        const openFlag = new Set((flags.data ?? []).filter((f) => !f.resolved && f.user_id).map((f) => f.user_id));
+        const sellers = (levels.data ?? []).map((l) => {
+          const m = modOf.get(l.seller_id);
+          const status = m?.suspended ? "suspended" : openFlag.has(l.seller_id) ? "flagged" : l.pending_manual_review ? "pending" : "active";
+          return {
+            ...l,
+            pi_username: nameOf.get(l.seller_id) ?? null,
+            points_balance: rewardOf.get(l.seller_id)?.points_balance ?? 0,
+            xp_total: rewardOf.get(l.seller_id)?.xp_total ?? 0,
+            success_score: perfOf.get(l.seller_id) ?? 0,
+            warnings_count: m?.warnings_count ?? 0,
+            status,
+            badges: (userBadges.data ?? []).filter((b) => b.user_id === l.seller_id),
+          };
+        });
+        // Points + XP admin adjustment history, with the admin responsible (from the audit log).
+        const adjAudit = (audit.data ?? []).filter((a) => a.action === "admin_adjustment");
+        const adjustments = adjAudit.map((a) => ({
+          id: a.id,
+          created_at: a.created_at,
+          user_id: a.user_id,
+          user_name: nameOf.get(a.user_id) ?? null,
+          actor_name: nameOf.get(a.actor_id) ?? a.actor_id,
+          points: (a.details as any)?.points ?? 0,
+          xp: (a.details as any)?.xp ?? 0,
+          reason: (a.details as any)?.reason ?? "",
+        }));
         return json({
           requirements: requirements.data ?? [],
-          levels: levels.data ?? [],
-          fraud_flags: flags.data ?? [],
+          sellers,
+          fraud_flags: (flags.data ?? []).map((f) => ({ ...f, user_name: nameOf.get(f.user_id) ?? null })),
           badges: badges.data ?? [],
-          missions: missions.data ?? [],
-          boosts: boosts.data ?? [],
-          clubs: clubs.data ?? [],
-          audit: audit.data ?? [],
+          adjustments,
+          audit: (audit.data ?? []).map((a) => ({ ...a, user_name: nameOf.get(a.user_id) ?? null, actor_name: nameOf.get(a.actor_id) ?? null })),
+          points_tx: pointsTx.data ?? [],
+          xp_tx: xpTx.data ?? [],
         });
+      }
+
+      case "admin-revoke-badge": {
+        if (!isAdmin) return json({ error: "Forbidden" }, 403);
+        const target = String(body.user_id ?? "");
+        const code = String(body.code ?? "");
+        if (!target || !code) return json({ error: "Donnees manquantes" }, 400);
+        const { data: badge } = await admin.from("badges").select("id").eq("code", code).maybeSingle();
+        if (!badge) return json({ error: "Badge inconnu" }, 404);
+        const { error } = await admin.from("user_badges").delete().eq("user_id", target).eq("badge_id", badge.id);
+        if (error) return json({ error: error.message }, 500);
+        await admin.from("reward_audit_logs").insert({ user_id: target, actor_id: userId, action: "badge_revoked", details: { code } });
+        return json({ ok: true });
+      }
+
+      case "admin-flag-action": {
+        if (!isAdmin) return json({ error: "Forbidden" }, 403);
+        const flagId = String(body.flag_id ?? "");
+        const decision = String(body.decision ?? "");
+        const reason = String(body.reason ?? "").trim().slice(0, 300);
+        if (!flagId || !["warn", "suspend", "dismiss"].includes(decision)) return json({ error: "Action invalide" }, 400);
+        if (!reason) return json({ error: "Une raison est obligatoire" }, 400);
+        const { data: flag } = await admin.from("reward_fraud_flags").select("*").eq("id", flagId).maybeSingle();
+        if (!flag) return json({ error: "Signalement introuvable" }, 404);
+        if (flag.resolved) return json({ error: "Signalement deja traite" }, 400);
+        const now = new Date().toISOString();
+        if (flag.user_id && decision !== "dismiss") {
+          const { data: mod } = await admin.from("seller_moderation").select("*").eq("seller_id", flag.user_id).maybeSingle();
+          const row: Record<string, unknown> = { seller_id: flag.user_id, warnings_count: mod?.warnings_count ?? 0 };
+          if (decision === "warn") { row.warnings_count = Number(mod?.warnings_count ?? 0) + 1; row.last_warning_at = now; }
+          if (decision === "suspend") { row.suspended = true; row.suspended_at = now; row.suspended_by = userId; row.suspension_reason = reason; }
+          await admin.from("seller_moderation").upsert(row, { onConflict: "seller_id" });
+        }
+        await admin.from("reward_fraud_flags").update({ resolved: true, resolution: decision, resolved_by: userId, resolved_at: now }).eq("id", flagId);
+        await admin.from("reward_audit_logs").insert({
+          user_id: flag.user_id, actor_id: userId,
+          action: decision === "warn" ? "seller_warned" : decision === "suspend" ? "seller_suspended" : "flag_dismissed",
+          details: { flag_id: flagId, reason },
+        });
+        return json({ ok: true });
+      }
+
+      case "admin-unsuspend": {
+        if (!isAdmin) return json({ error: "Forbidden" }, 403);
+        const target = String(body.seller_id ?? "");
+        const reason = String(body.reason ?? "").trim().slice(0, 300);
+        if (!target || !reason) return json({ error: "Vendeur et raison obligatoires" }, 400);
+        await admin.from("seller_moderation").update({ suspended: false, suspended_at: null, suspended_by: null, suspension_reason: null }).eq("seller_id", target);
+        await admin.from("reward_audit_logs").insert({ user_id: target, actor_id: userId, action: "seller_unsuspended", details: { reason } });
+        return json({ ok: true });
       }
 
       case "admin-update-requirement": {
@@ -245,19 +330,32 @@ Deno.serve(async (req) => {
       case "admin-grant-top": {
         if (!isAdmin) return json({ error: "Forbidden" }, 403);
         const target = String(body.seller_id ?? "");
-        const approve = body.approve !== false;
-        if (!target) return json({ error: "Vendeur manquant" }, 400);
+        const mode = String(body.mode ?? (body.approve === false ? "rejected" : "granted"));
+        if (!target || !["granted", "rejected", "auto"].includes(mode)) return json({ error: "Donnees invalides" }, 400);
         const { data: row } = await admin.from("seller_levels").select("*").eq("seller_id", target).maybeSingle();
-        if (!row?.pending_manual_review) return json({ error: "Ce vendeur n'est pas eligible au niveau Top." }, 400);
-        if (approve) {
+        if (!row) return json({ error: "Vendeur introuvable" }, 404);
+        const now = new Date().toISOString();
+        if (mode === "granted") {
           await admin.from("seller_levels").update({
-            level: "level_3", pending_manual_review: false, level_since: new Date().toISOString(),
+            level: "level_3", pending_manual_review: false, level_since: now,
+            top_override: "granted", top_override_by: userId, top_override_at: now,
           }).eq("seller_id", target);
           await awardBadge(admin, target, "top_seller");
+        } else if (mode === "rejected") {
+          await admin.from("seller_levels").update({
+            pending_manual_review: false,
+            level: row.level === "level_3" ? "level_2" : row.level,
+            top_override: "rejected", top_override_by: userId, top_override_at: now,
+          }).eq("seller_id", target);
         } else {
-          await admin.from("seller_levels").update({ pending_manual_review: false }).eq("seller_id", target);
+          await admin.from("seller_levels").update({ top_override: null, top_override_by: null, top_override_at: null }).eq("seller_id", target);
+          await calculateSellerLevel(admin, target);
         }
-        await admin.from("reward_audit_logs").insert({ user_id: target, actor_id: userId, action: approve ? "top_granted" : "top_rejected", details: {} });
+        await admin.from("reward_audit_logs").insert({
+          user_id: target, actor_id: userId,
+          action: mode === "granted" ? "top_granted" : mode === "rejected" ? "top_rejected" : "top_override_cleared",
+          details: { reason: String(body.reason ?? "").slice(0, 300) },
+        });
         return json({ ok: true });
       }
 
