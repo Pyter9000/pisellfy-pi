@@ -431,7 +431,10 @@ export type Database = {
           details: Json
           id: string
           kind: string
+          resolution: string | null
           resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
           severity: string
           user_id: string | null
         }
@@ -440,7 +443,10 @@ export type Database = {
           details?: Json
           id?: string
           kind: string
+          resolution?: string | null
           resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
           severity?: string
           user_id?: string | null
         }
@@ -449,7 +455,10 @@ export type Database = {
           details?: Json
           id?: string
           kind?: string
+          resolution?: string | null
           resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
           severity?: string
           user_id?: string | null
         }
@@ -608,6 +617,9 @@ export type Database = {
           pending_manual_review: boolean
           progress: Json
           seller_id: string
+          top_override: string | null
+          top_override_at: string | null
+          top_override_by: string | null
           under_watch: boolean
           updated_at: string
           watch_started_at: string | null
@@ -623,6 +635,9 @@ export type Database = {
           pending_manual_review?: boolean
           progress?: Json
           seller_id: string
+          top_override?: string | null
+          top_override_at?: string | null
+          top_override_by?: string | null
           under_watch?: boolean
           updated_at?: string
           watch_started_at?: string | null
@@ -638,9 +653,48 @@ export type Database = {
           pending_manual_review?: boolean
           progress?: Json
           seller_id?: string
+          top_override?: string | null
+          top_override_at?: string | null
+          top_override_by?: string | null
           under_watch?: boolean
           updated_at?: string
           watch_started_at?: string | null
+        }
+        Relationships: []
+      }
+      seller_moderation: {
+        Row: {
+          created_at: string
+          last_warning_at: string | null
+          seller_id: string
+          suspended: boolean
+          suspended_at: string | null
+          suspended_by: string | null
+          suspension_reason: string | null
+          updated_at: string
+          warnings_count: number
+        }
+        Insert: {
+          created_at?: string
+          last_warning_at?: string | null
+          seller_id: string
+          suspended?: boolean
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspension_reason?: string | null
+          updated_at?: string
+          warnings_count?: number
+        }
+        Update: {
+          created_at?: string
+          last_warning_at?: string | null
+          seller_id?: string
+          suspended?: boolean
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspension_reason?: string | null
+          updated_at?: string
+          warnings_count?: number
         }
         Relationships: []
       }
