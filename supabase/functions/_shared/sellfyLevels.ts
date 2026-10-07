@@ -453,7 +453,7 @@ export async function awardPoints(
   sourceId: string | null,
 ) {
   if (!Number.isFinite(amount) || amount === 0) return { skipped: true };
-  if (amount > 0) {
+  if (amount > 0 && sourceType !== "admin") {
     const spent = await dailyTotal(admin, "points_transactions", userId);
     if (spent + amount > DAILY_POINTS_CAP) {
       await admin.from("reward_fraud_flags").insert({
@@ -487,16 +487,16 @@ export async function awardXp(
   sourceType: string,
   sourceId: string | null,
 ) {
-  if (!Number.isFinite(amount) || amount <= 0) return { skipped: true };
+  if (!Number.isFinite(amount) || amount === 0 || (amount < 0 && sourceType !== "admin")) return { skipped: true };
   const gained = await dailyTotal(admin, "xp_transactions", userId);
-  if (gained + amount > DAILY_XP_CAP) {
+  if (sourceType !== "admin" && gained + amount > DAILY_XP_CAP) {
     await admin.from("reward_fraud_flags").insert({
       user_id: userId, kind: "xp_daily_cap", details: { reason, sourceType, sourceId, amount },
     });
     return { skipped: true, capped: true };
   }
   const rewards = await ensureRewards(admin, userId);
-  const total = Number(rewards.xp_total) + amount;
+  const total = Math.max(0, Number(rewards.xp_total) + amount);
   const { error } = await admin.from("xp_transactions").insert({
     user_id: userId, amount, reason, source_type: sourceType, source_id: sourceId, total_after: total,
   });

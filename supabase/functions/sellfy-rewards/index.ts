@@ -2,6 +2,8 @@
 // Every read/write goes through the authenticated caller's own identity.
 // The client can never declare a level, a score, a points balance or a badge.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { z } from "npm:zod@4";
 import {
   calculateSellerLevel,
   claimMission,
@@ -14,10 +16,30 @@ import {
   LEVEL_LABELS,
 } from "../_shared/sellfyLevels.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+const uuid = z.string().uuid();
+const reasonSchema = z.string().trim().min(1).max(300);
+const requirementPatch = z.object({
+  minimum_orders: z.number().int().min(0).max(100000).optional(),
+  minimum_rating: z.number().min(0).max(5).optional(),
+  minimum_response_rate: z.number().min(0).max(100).optional(),
+  maximum_cancellation_rate: z.number().min(0).max(100).optional(),
+  maximum_dispute_rate: z.number().min(0).max(100).optional(),
+  minimum_success_score: z.number().min(0).max(100).optional(),
+  minimum_account_age_days: z.number().int().min(0).max(100000).optional(),
+  minimum_reviews: z.number().int().min(0).max(100000).optional(),
+  manual_review_required: z.boolean().optional(), is_active: z.boolean().optional(),
+  label: z.string().trim().min(1).max(100).optional(),
+}).strict();
+const adminSchemas: Record<string, z.ZodType> = {
+  "admin-overview": z.object({ action: z.literal("admin-overview") }).strict(),
+  "admin-update-requirement": z.object({ action: z.string(), id: uuid, patch: requirementPatch }).strict(),
+  "admin-adjust-rewards": z.object({ action: z.string(), user_id: uuid, points: z.number().int().min(-100000).max(100000).default(0), xp: z.number().int().min(-100000).max(100000).default(0), reason: reasonSchema }).strict(),
+  "admin-grant-top": z.object({ action: z.string(), seller_id: uuid, mode: z.enum(["granted", "rejected", "auto"]).optional(), approve: z.boolean().optional(), reason: reasonSchema }).strict(),
+  "admin-award-badge": z.object({ action: z.string(), user_id: uuid, code: z.string().min(1).max(100) }).strict(),
+  "admin-revoke-badge": z.object({ action: z.string(), user_id: uuid, code: z.string().min(1).max(100) }).strict(),
+  "admin-flag-action": z.object({ action: z.string(), flag_id: uuid, decision: z.enum(["warn", "suspend", "dismiss"]), reason: reasonSchema }).strict(),
+  "admin-unsuspend": z.object({ action: z.string(), seller_id: uuid, reason: reasonSchema }).strict(),
+  "admin-recalculate-seller": z.object({ action: z.string(), seller_id: uuid }).strict(),
 };
 
 const json = (body: unknown, status = 200) =>
@@ -55,6 +77,14 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
   const action = String(body.action ?? "");
+  if (action.startsWith("admin-")) {
+    if (!isAdmin) return json({ error: "Forbidden" }, 403);
+    const schema = adminSchemas[action];
+    if (!schema) return json({ error: "Action inconnue" }, 400);
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) return json({ error: "Paramètres administrateur invalides", details: parsed.error.flatten() }, 400);
+    body = parsed.data as Record<string, unknown>;
+  }
 
   try {
     switch (action) {
@@ -201,6 +231,9 @@ Deno.serve(async (req) => {
           admin.from("xp_transactions").select("*").eq("source_type", "admin").order("created_at", { ascending: false }).limit(100),
           admin.from("reward_audit_logs").select("*").order("created_at", { ascending: false }).limit(200),
         ]);
+        for (const result of [requirements, levels, flags, badges, userBadges, rewards, profiles, moderation, pointsTx, xpTx, audit]) {
+          if (result.error) throw result.error;
+        }
         const { data: perf } = await admin.from("seller_performance").select("seller_id, success_score");
         const nameOf = new Map((profiles.data ?? []).map((p) => [p.id, p.pi_username]));
         const rewardOf = new Map((rewards.data ?? []).map((r) => [r.user_id, r]));
@@ -307,6 +340,10 @@ Deno.serve(async (req) => {
         const clean: Record<string, unknown> = {};
         for (const key of allowed) if (key in patch) clean[key] = patch[key];
         if (!id || Object.keys(clean).length === 0) return json({ error: "Rien a mettre a jour" }, 400);
+        const { data: requirement, error: lookupError } = await admin.from("seller_level_requirements").select("level").eq("id", id).maybeSingle();
+        if (lookupError) throw lookupError;
+        if (!requirement) return json({ error: "Niveau introuvable" }, 404);
+        if (requirement.level === "level_3" && clean.manual_review_required === false) return json({ error: "Sellfy Top nécessite une validation manuelle." }, 400);
         const { error } = await admin.from("seller_level_requirements").update(clean).eq("id", id);
         if (error) return json({ error: error.message }, 500);
         await admin.from("reward_audit_logs").insert({ actor_id: userId, action: "requirement_updated", details: { id, clean } });
@@ -320,9 +357,14 @@ Deno.serve(async (req) => {
         const xp = Number(body.xp ?? 0);
         const reason = String(body.reason ?? "Ajustement administrateur").slice(0, 200);
         if (!target) return json({ error: "Utilisateur manquant" }, 400);
+        if (!points && !xp) return json({ error: "Indiquez un ajustement non nul." }, 400);
+        const { data: targetProfile } = await admin.from("profiles").select("id").eq("id", target).maybeSingle();
+        if (!targetProfile) return json({ error: "Utilisateur introuvable" }, 404);
+        const { data: balance } = await admin.from("user_rewards").select("points_balance,xp_total").eq("user_id", target).maybeSingle();
+        if (Number(balance?.points_balance ?? 0) + points < 0 || Number(balance?.xp_total ?? 0) + xp < 0) return json({ error: "L’ajustement rendrait le solde négatif." }, 400);
         const ref = `admin:${Date.now()}`;
-        if (points) await awardPoints(admin, target, points, reason, "admin", ref);
-        if (xp) await awardXp(admin, target, xp, reason, "admin", ref);
+        if (points) { const result = await awardPoints(admin, target, points, reason, "admin", ref); if (result.skipped) throw new Error("Points adjustment failed"); }
+        if (xp) { const result = await awardXp(admin, target, xp, reason, "admin", ref); if (result.skipped) throw new Error("XP adjustment failed"); }
         await admin.from("reward_audit_logs").insert({ user_id: target, actor_id: userId, action: "admin_adjustment", details: { points, xp, reason } });
         return json({ ok: true });
       }
@@ -365,6 +407,8 @@ Deno.serve(async (req) => {
         const code = String(body.code ?? "");
         if (!target || !code) return json({ error: "Donnees manquantes" }, 400);
         const ok = await awardBadge(admin, target, code);
+        if (!ok) return json({ error: "Badge inconnu ou attribution impossible" }, 400);
+        await admin.from("reward_audit_logs").insert({ user_id: target, actor_id: userId, action: "admin_badge_awarded", details: { code } });
         return json({ ok });
       }
 
