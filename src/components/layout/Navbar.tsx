@@ -3,17 +3,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, ShoppingCart, Menu, X, Wallet, Loader2, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePiAuth } from "@/hooks/usePiAuth";
+import { useAdmin } from "@/hooks/useAdmin";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [cartCount] = useState(2);
   const { session, piUsername, loading, signIn, signOut } = usePiAuth();
+  const { isAdmin } = useAdmin();
 
 
   const navLinks = [
     { name: "Marketplace", href: "/#marketplace" },
     { name: "Abonnements", href: "/subscriptions" },
     ...(session ? [{ name: "Mes revenus", href: "/earnings" }] : []),
+    ...(isAdmin ? [{ name: "Admin Levels", href: "/admin/seller-levels" }] : []),
     { name: "Categories", href: "/#categories" },
     { name: "Creators", href: "/#creators" },
     { name: "About", href: "/#about" },
@@ -39,7 +42,7 @@ const Navbar = () => {
           </a>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center gap-8">
+          <div className="hidden lg:flex items-center gap-4">
             {navLinks.map((link) => (
               <a
                 key={link.name}
@@ -52,7 +55,7 @@ const Navbar = () => {
           </div>
 
           {/* Search Bar - Desktop */}
-          <div className="hidden lg:flex items-center flex-1 max-w-md mx-8">
+          <div className="hidden xl:flex items-center flex-1 max-w-md mx-4">
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input

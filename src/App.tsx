@@ -13,6 +13,8 @@ import OAuthConsent from "./pages/OAuthConsent";
 import Earnings from "./pages/Earnings";
 import PlatformRevenue from "./pages/PlatformRevenue";
 import NotFound from "./pages/NotFound";
+import AdminSellerLevels from "./pages/AdminSellerLevels";
+import AdminRoute from "@/components/rewards/AdminRoute";
 
 
 const queryClient = new QueryClient();
@@ -32,6 +34,7 @@ const App = () => (
             <Route path="/subscriptions/dashboard" element={<SellerSubscriptions />} />
             <Route path="/earnings" element={<Earnings />} />
             <Route path="/admin/revenue" element={<PlatformRevenue />} />
+            <Route path="/admin/seller-levels" element={<AdminRoute><AdminSellerLevels /></AdminRoute>} />
 
             <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
