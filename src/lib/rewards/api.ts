@@ -119,3 +119,24 @@ export const adminRevokeBadge = (user_id: string, code: string) => callRewards("
 export const adminFlagAction = (flag_id: string, decision: "warn" | "suspend" | "dismiss", reason: string) =>
   callRewards("admin-flag-action", { flag_id, decision, reason });
 export const adminUnsuspend = (seller_id: string, reason: string) => callRewards("admin-unsuspend", { seller_id, reason });
+
+export interface AdminSeller {
+  seller_id: string; pi_username: string | null; level: SellfyLevel; eligible_level: SellfyLevel;
+  points_balance: number; xp_total: number; success_score: number;
+  status: "active" | "pending" | "flagged" | "suspended"; warnings_count: number;
+  under_watch: boolean; top_override: "granted" | "rejected" | null; top_override_at: string | null;
+  badges: { awarded_at: string; badges: { code: string; name: string } | null }[];
+}
+export interface AdminRequirement {
+  id: string; level: SellfyLevel; label: string; minimum_orders: number; minimum_rating: number;
+  minimum_response_rate: number; maximum_cancellation_rate: number; maximum_dispute_rate: number;
+  minimum_success_score: number; minimum_account_age_days: number; minimum_reviews: number;
+  manual_review_required: boolean; is_active: boolean;
+}
+export interface AdminOverview {
+  sellers: AdminSeller[]; requirements: AdminRequirement[];
+  badges: { code: string; name: string }[];
+  fraud_flags: { id: string; user_name: string | null; user_id: string | null; kind: string; severity: string; details: Record<string, unknown>; resolved: boolean; resolution: string | null; created_at: string }[];
+  adjustments: { id: string; created_at: string; user_name: string | null; actor_name: string | null; points: number; xp: number; reason: string }[];
+  audit: { id: string; created_at: string; user_name: string | null; actor_name: string | null; action: string; details: Record<string, unknown> }[];
+}
