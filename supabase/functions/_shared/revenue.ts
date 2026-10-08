@@ -41,8 +41,17 @@ export interface RecordEarningInput {
  * Writes the ledger row for a confirmed payment and credits the seller balance.
  * Idempotent: a second call with the same (transaction_type, payment_id) is a no-op.
  */
+/** Reads the admin-configured commission rate; falls back to the default if unavailable. */
+export async function getCommissionRate(admin: SupabaseClient): Promise<number> {
+  const { data, error } = await admin.from("platform_settings").select("commission_rate").eq("id", true).maybeSingle();
+  const rate = Number(data?.commission_rate);
+  if (error || !Number.isFinite(rate) || rate < 0 || rate > 0.5) return PLATFORM_COMMISSION_RATE;
+  return rate;
+}
+
 export async function recordEarning(admin: SupabaseClient, input: RecordEarningInput) {
-  const { total, platformFee, sellerEarnings } = splitAmount(input.totalAmount);
+  const rate = await getCommissionRate(admin);
+  const { total, platformFee, sellerEarnings } = splitAmount(input.totalAmount, rate);
 
   const { data: existing } = await admin
     .from("earnings")
