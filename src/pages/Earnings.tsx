@@ -176,8 +176,8 @@ const Earnings = () => {
                         <th className="text-left p-3">Date</th>
                         <th className="text-left p-3">Type</th>
                         <th className="text-right p-3">Montant brut</th>
-                        <th className="text-right p-3">Commission (20%)</th>
-                        <th className="text-right p-3">Net (80%)</th>
+                        <th className="text-right p-3">Commission</th>
+                        <th className="text-right p-3">Net vendeur</th>
                         <th className="text-left p-3">Retrait</th>
                       </tr>
                     </thead>
@@ -188,7 +188,7 @@ const Earnings = () => {
                           <td className="p-3">{TRANSACTION_LABELS[e.transaction_type]}</td>
                           <td className="p-3 text-right">{formatPi(e.total_amount)}</td>
                           <td className="p-3 text-right text-muted-foreground">
-                            −{formatPi(e.platform_fee)}
+                            −{formatPi(e.platform_fee)} <span className="text-xs">({formatRate(e.commission_rate)})</span>
                           </td>
                           <td className="p-3 text-right font-semibold gradient-text">
                             {formatPi(e.seller_earnings)}
