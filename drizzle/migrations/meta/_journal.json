@@ -8,6 +8,13 @@
       "when": 1791305029941,
       "tag": "0000_admin_seller_levels_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791487304746,
+      "tag": "0001_platform_settings_commission",
+      "breakpoints": true
     }
   ]
 }
