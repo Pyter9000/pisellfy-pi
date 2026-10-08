@@ -8,6 +8,7 @@ import { usePiAuth } from "@/hooks/usePiAuth";
 import { toast } from "@/hooks/use-toast";
 import {
   formatPi,
+  formatRate,
   getMyBalance,
   listMyEarnings,
   listMyPayouts,
