@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Loader2, Landmark, Users, ArrowDownToLine, ShieldAlert } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/sections/Footer";
@@ -7,6 +9,9 @@ import { usePiAuth } from "@/hooks/usePiAuth";
 import { toast } from "@/hooks/use-toast";
 import {
   formatPi,
+  formatRate,
+  getCommissionRate,
+  updateCommissionRate,
   isAdmin,
   listAllEarnings,
   listAllPayouts,
@@ -25,6 +30,25 @@ const PlatformRevenue = () => {
   const [earnings, setEarnings] = useState<Earning[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rate, setRate] = useState<number | null>(null);
+  const [rateInput, setRateInput] = useState("");
+  const [savingRate, setSavingRate] = useState(false);
+
+  const saveRate = async () => {
+    if (!userId) return;
+    const pct = Number(rateInput.replace(",", "."));
+    setSavingRate(true);
+    try {
+      const saved = await updateCommissionRate(pct / 100, userId);
+      setRate(saved);
+      setRateInput(String(saved * 100));
+      toast({ title: "Commission mise à jour", description: `Nouveau taux : ${formatRate(saved)} (ventes futures uniquement).` });
+    } catch (err) {
+      toast({ title: "Échec", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setSavingRate(false);
+    }
+  };
 
   useEffect(() => {
     if (!userId) {
@@ -40,7 +64,9 @@ const PlatformRevenue = () => {
         return;
       }
       try {
-        const [e, p] = await Promise.all([listAllEarnings(), listAllPayouts()]);
+        const [e, p, r] = await Promise.all([listAllEarnings(), listAllPayouts(), getCommissionRate()]);
+        setRate(r);
+        setRateInput(String(r * 100));
         setEarnings(e);
         setPayouts(p);
       } catch (err) {
@@ -88,10 +114,27 @@ const PlatformRevenue = () => {
           </div>
         ) : (
           <div className="space-y-10">
+            <section className="bg-card border border-border rounded-2xl p-6">
+              <h2 className="font-display text-xl font-bold mb-1">Réglages — commission</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Taux actuel : <span className="font-semibold text-foreground">{rate != null ? formatRate(rate) : "—"}</span>.
+                S'applique uniquement aux ventes futures ; chaque vente garde le taux appliqué au moment du paiement.
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">Nouveau taux (%) — entre 0 et 50</span>
+                  <Input type="number" min={0} max={50} step={0.5} value={rateInput} onChange={(e) => setRateInput(e.target.value)} className="w-40" />
+                </label>
+                <Button onClick={saveRate} disabled={savingRate || rateInput === ""}>
+                  {savingRate && <Loader2 className="w-4 h-4 animate-spin" />} Enregistrer
+                </Button>
+              </div>
+            </section>
+
             <section className="grid gap-4 sm:grid-cols-3">
               <div className="bg-card border border-border rounded-2xl p-6">
                 <Landmark className="w-5 h-5 text-primary mb-3" />
-                <p className="text-sm text-muted-foreground">Commissions collectées (20%)</p>
+                <p className="text-sm text-muted-foreground">Commissions collectées</p>
                 <p className="text-2xl font-bold gradient-text">{formatPi(stats.commissions)}</p>
               </div>
               <div className="bg-card border border-border rounded-2xl p-6">
@@ -118,6 +161,7 @@ const PlatformRevenue = () => {
                         <th className="text-left p-3">Date</th>
                         <th className="text-left p-3">Type</th>
                         <th className="text-right p-3">Total</th>
+                        <th className="text-right p-3">Taux</th>
                         <th className="text-right p-3">Commission</th>
                         <th className="text-right p-3">Vendeur</th>
                         <th className="text-left p-3">Retrait</th>
@@ -129,6 +173,7 @@ const PlatformRevenue = () => {
                           <td className="p-3">{dateFr(e.created_at)}</td>
                           <td className="p-3">{TRANSACTION_LABELS[e.transaction_type]}</td>
                           <td className="p-3 text-right">{formatPi(e.total_amount)}</td>
+                          <td className="p-3 text-right">{formatRate(e.commission_rate)}</td>
                           <td className="p-3 text-right gradient-text font-semibold">
                             {formatPi(e.platform_fee)}
                           </td>

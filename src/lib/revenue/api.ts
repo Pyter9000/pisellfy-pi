@@ -32,6 +32,7 @@ export interface Earning {
   total_amount: number;
   platform_fee: number;
   seller_earnings: number;
+  commission_rate: number;
   payout_status: EarningPayoutStatus;
   created_at: string;
 }
@@ -87,6 +88,7 @@ export async function listMyEarnings(sellerId: string): Promise<Earning[]> {
     total_amount: num(row.total_amount),
     platform_fee: num(row.platform_fee),
     seller_earnings: num(row.seller_earnings),
+    commission_rate: num(row.commission_rate),
   }));
 }
 
@@ -143,6 +145,7 @@ export async function listAllEarnings(): Promise<Earning[]> {
     total_amount: num(row.total_amount),
     platform_fee: num(row.platform_fee),
     seller_earnings: num(row.seller_earnings),
+    commission_rate: num(row.commission_rate),
   }));
 }
 
@@ -158,3 +161,26 @@ export async function listAllPayouts(): Promise<Payout[]> {
 
 export const formatPi = (value: number) =>
   `π ${value.toLocaleString("fr-FR", { maximumFractionDigits: 4 })}`;
+
+export const formatRate = (rate: number) =>
+  `${(rate * 100).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} %`;
+
+export async function getCommissionRate(): Promise<number> {
+  const { data, error } = await supabase.from("platform_settings").select("commission_rate").eq("id", true).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? num(data.commission_rate) : PLATFORM_COMMISSION_RATE;
+}
+
+/** Admin only — enforced by the database (role check + 0–50 % limit). */
+export async function updateCommissionRate(rate: number, adminId: string): Promise<number> {
+  if (!Number.isFinite(rate) || rate < 0 || rate > 0.5) throw new Error("Le taux doit être compris entre 0 et 50 %.");
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .update({ commission_rate: rate, updated_by: adminId })
+    .eq("id", true)
+    .select("commission_rate")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Modification refusée : droits administrateur requis.");
+  return num(data.commission_rate);
+}
